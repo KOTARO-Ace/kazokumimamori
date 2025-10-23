@@ -7,10 +7,10 @@ app.use(express.json());
 const LINE_TOKEN = process.env.LINE_TOKEN;
 const OPENAI_KEY = process.env.OPENAI_KEY;
 
-// 🧠 ユーザーの名前を保存する簡易データベース（サーバー起動中のみ保持）
+// サーバー起動中だけ保持する簡易ユーザーDB
 const userNames = {};
 
-// 💬 ChatGPT返信関数
+// ChatGPTにテキスト送信
 async function chatGPTReply(text, userName) {
   const prompt = userName
     ? `あなたは優しい孫AIです。相手の名前は「${userName}」です。名前を呼びながら親しみを持って会話してください。`
@@ -35,7 +35,7 @@ async function chatGPTReply(text, userName) {
   return data.choices?.[0]?.message?.content || "ちょっと考え中です！";
 }
 
-// 💬 LINEにテキストを送信
+// LINEにテキスト返信
 async function sendLineMessage(replyToken, text) {
   await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
@@ -50,7 +50,7 @@ async function sendLineMessage(replyToken, text) {
   });
 }
 
-// 🖼 画像受信処理
+// 画像受信 → AIキャラ生成
 async function handleImageMessage(messageId) {
   const imageResponse = await fetch(`https://api-data.line.me/v2/bot/message/${messageId}/content`, {
     headers: { "Authorization": `Bearer ${LINE_TOKEN}` },
@@ -74,7 +74,7 @@ async function handleImageMessage(messageId) {
   return dalleData.data[0].url;
 }
 
-// 🖼 画像をLINEに送信
+// LINEに画像返信
 async function sendLineImage(replyToken, imageUrl) {
   await fetch("https://api.line.me/v2/bot/message/reply", {
     method: "POST",
@@ -95,42 +95,45 @@ async function sendLineImage(replyToken, imageUrl) {
   });
 }
 
-// 🧩 LINE Webhook（会話の中心）
+// Webhook
 app.post("/webhook", async (req, res) => {
   const events = req.body.events;
   for (const event of events) {
     if (event.type === "message") {
       const userId = event.source.userId;
 
-      // テキストメッセージ処理
-      if (event.message.type === "text") {
-        const userMessage = event.message.text;
-
-        // 名前登録されていない場合は名前を聞く
-        if (!userNames[userId]) {
-          // 名前っぽい単語が入力された場合は登録する
-          if (userMessage.length <= 10 && !userMessage.includes(" ")) {
-            userNames[userId] = userMessage;
-            await sendLineMessage(event.replyToken, `ありがとうございます、${userMessage}さん😊 これからよろしくね！`);
-          } else {
-            await sendLineMessage(event.replyToken, "こんにちは！あなたのお名前を教えてください☺️");
-          }
-        } else {
-          // 名前がある場合は通常会話
-          const reply = await chatGPTReply(userMessage, userNames[userId]);
-          await sendLineMessage(event.replyToken, reply);
-        }
-      }
-
-      // 画像受信処理
+      // 画像メッセージ処理
       if (event.message.type === "image") {
         const imageReply = await handleImageMessage(event.message.id);
         await sendLineImage(event.replyToken, imageReply);
+        continue; // 画像処理後はテキスト処理に行かない
+      }
+
+      const userMessage = event.message.text;
+
+      // 名前未登録の場合
+      if (!userNames[userId]) {
+        // 名前っぽい入力なら登録してすぐ返答
+        if (userMessage && userMessage.length <= 10 && !userMessage.includes(" ")) {
+          userNames[userId] = userMessage.trim();
+          await sendLineMessage(event.replyToken, `ありがとうございます、${userNames[userId]}さん😊 これからよろしくね！`);
+
+          // 名前登録直後もChatGPTで返答
+          const reply = await chatGPTReply(userMessage, userNames[userId]);
+          await sendLineMessage(event.replyToken, reply);
+        } else {
+          // 名前が未登録でまだ入力が名前じゃない場合
+          await sendLineMessage(event.replyToken, "こんにちは！あなたのお名前を教えてください☺️");
+        }
+      } else {
+        // 名前登録済み → ChatGPTで通常会話
+        const reply = await chatGPTReply(userMessage, userNames[userId]);
+        await sendLineMessage(event.replyToken, reply);
       }
     }
   }
   res.sendStatus(200);
 });
 
-// ✅ サーバー起動
+// サーバー起動
 app.listen(3000, () => console.log("Server running on port 3000"));
