@@ -13,8 +13,8 @@ const userNames = {};
 // ChatGPTにテキスト送信
 async function chatGPTReply(text, userName) {
   const prompt = userName
-    ? `あなたは優しい孫AIです。相手の名前は「${userName}」です。名前を呼びながら親しみを持って会話してください。`
-    : "あなたは優しい孫AIです。高齢者に寄り添うように会話してください。";
+    ? `あなたは優しい孫AIです。相手の名前は「${userName}」です。名前を呼びながら親しみを持って会話してください。「おじいちゃん」「おばあちゃん」とは言わないでください。`
+    : "あなたは優しい孫AIです。高齢者に寄り添うように会話してください。名前を呼ぶときは「おじいちゃん」「おばあちゃん」とは言わず、登録されている名前で呼んでください。";
 
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
